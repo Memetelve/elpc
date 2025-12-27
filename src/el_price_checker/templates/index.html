@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 2fr 1fr; align-items: start;">
+  <div class="card">
+    <h2 style="margin-top:0;">Tracked items</h2>
+    {% if products %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Last price</th>
+          <th>Seen</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td>{{ p.id }}</td>
+          <td>
+            <div><a href="/product/{{ p.id }}">{{ p.name }}</a></div>
+            <div class="muted">{{ p.source }} &middot; <a href="{{ p.url }}" target="_blank">link</a></div>
+          </td>
+          <td>{% if p.last_price %}{{ '%.2f' % p.last_price }} {{ p.currency }}{% else %}<span class="muted">n/a</span>{% endif %}</td>
+          <td class="muted">{{ p.last_seen or '' }}</td>
+          <td>{% if p.error %}<span class="tag" style="border-color:#f5f5f5;color:#f5f5f5;">{{ p.error }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Nothing tracked yet.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Add product</h3>
+    <form method="post" action="/add">
+      <label for="url">Product URL</label>
+      <input id="url" name="url" type="text" placeholder="https://..." required>
+      <label for="name" style="margin-top:12px;">Display name (optional)</label>
+      <input id="name" name="name" type="text" placeholder="Will fall back to page title">
+      <div style="margin-top:14px; display:flex; gap:10px;">
+        <button class="btn primary" type="submit">Add and fetch</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
