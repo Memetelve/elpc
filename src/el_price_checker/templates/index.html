@@ -5,6 +5,9 @@
   <div class="card">
     <h2 style="margin-top:0;">Tracked items</h2>
     {% if products %}
+    <form id="reorder-form" method="post" action="/reorder" style="display:none;">
+      <input type="hidden" id="reorder-input" name="order" value="" />
+    </form>
     <table>
       <thead>
         <tr>
@@ -17,27 +20,39 @@
           <th></th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="products-body">
         {% for p in products %}
-        <tr>
-          <td style="white-space:nowrap;">
-            <form method="post" action="/move/{{ p.id }}" style="display:inline;">
-              <input type="hidden" name="direction" value="up" />
-              <button class="btn" type="submit" title="Move up">Up</button>
-            </form>
-            <form method="post" action="/move/{{ p.id }}" style="display:inline; margin-left:6px;">
-              <input type="hidden" name="direction" value="down" />
-              <button class="btn" type="submit" title="Move down">Down</button>
-            </form>
+        <tr data-pid="{{ p.id }}">
+          <td style="white-space:nowrap; width: 28px;">
+            <span class="drag-handle" draggable="true" title="Drag to reorder" aria-label="Drag to reorder">⋮⋮</span>
           </td>
           <td>{{ p.id }}</td>
           <td>
-            <div><a href="/product/{{ p.id }}">{{ p.name }}</a></div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+              <div><a href="/product/{{ p.id }}">{{ p.name }}</a></div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button class="icon-btn edit-btn" type="button" title="Edit name" aria-label="Edit name">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm2.92 2.83H5v-.92l8.06-8.06.92.92-8.06 8.06zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/>
+                  </svg>
+                </button>
+                <form method="post" action="/delete/{{ p.id }}" onsubmit="return confirm('Delete this product and history?');" style="display:inline; margin:0;">
+                  <button class="icon-btn danger" type="submit" title="Remove" aria-label="Remove">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                      <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2zm-4 2h14v2H5V6z"/>
+                    </svg>
+                  </button>
+                </form>
+              </div>
+            </div>
             <div class="muted">{{ p.source }} &middot; <a href="{{ p.url }}" target="_blank">link</a></div>
-            <form method="post" action="/rename/{{ p.id }}" style="margin-top:10px; display:flex; gap:10px; align-items:center;">
-              <input name="name" type="text" value="{{ p.name }}" style="max-width:460px;" />
-              <button class="btn" type="submit">Rename</button>
-            </form>
+
+            <div class="rename-box" hidden>
+              <form method="post" action="/rename/{{ p.id }}" style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+                <input name="name" type="text" value="{{ p.name }}" style="max-width:460px;" />
+                <button class="btn" type="submit">Save</button>
+              </form>
+            </div>
           </td>
           <td>{% if p.last_price %}{{ '%.2f' % p.last_price }} {{ p.currency }}{% else %}<span class="muted">n/a</span>{% endif %}</td>
           <td>
@@ -70,4 +85,81 @@
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  const tbody = document.getElementById('products-body');
+  if (!tbody) return;
+
+  const form = document.getElementById('reorder-form');
+  const input = document.getElementById('reorder-input');
+  if (!form || !input) return;
+
+  let draggedRow = null;
+
+  function commitOrder() {
+    const ids = Array.from(tbody.querySelectorAll('tr[data-pid]')).map(tr => tr.getAttribute('data-pid'));
+    input.value = ids.join(',');
+    form.submit();
+  }
+
+  tbody.addEventListener('dragstart', (e) => {
+    const handle = e.target && e.target.closest ? e.target.closest('.drag-handle') : null;
+    if (!handle) {
+      e.preventDefault();
+      return;
+    }
+    draggedRow = handle.closest('tr');
+    if (!draggedRow) {
+      e.preventDefault();
+      return;
+    }
+    draggedRow.classList.add('dragging');
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', draggedRow.getAttribute('data-pid') || '');
+    }
+  });
+
+  tbody.addEventListener('dragend', () => {
+    if (draggedRow) draggedRow.classList.remove('dragging');
+    draggedRow = null;
+  });
+
+  tbody.addEventListener('dragover', (e) => {
+    if (!draggedRow) return;
+    e.preventDefault();
+    const overRow = e.target && e.target.closest ? e.target.closest('tr[data-pid]') : null;
+    if (!overRow || overRow === draggedRow) return;
+
+    const rect = overRow.getBoundingClientRect();
+    const after = (e.clientY - rect.top) > (rect.height / 2);
+    tbody.insertBefore(draggedRow, after ? overRow.nextSibling : overRow);
+  });
+
+  tbody.addEventListener('drop', (e) => {
+    if (!draggedRow) return;
+    e.preventDefault();
+    commitOrder();
+  });
+
+  tbody.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest ? e.target.closest('.edit-btn') : null;
+    if (!btn) return;
+    const row = btn.closest('tr[data-pid]');
+    if (!row) return;
+    const box = row.querySelector('.rename-box');
+    if (!box) return;
+    const willShow = box.hasAttribute('hidden');
+    if (willShow) box.removeAttribute('hidden');
+    else box.setAttribute('hidden', '');
+    if (willShow) {
+      const inp = box.querySelector('input[name="name"]');
+      if (inp) inp.focus();
+    }
+  });
+})();
+</script>
 {% endblock %}

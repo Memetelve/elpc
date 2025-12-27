@@ -34,6 +34,12 @@
     .alert { padding: 10px 12px; margin-bottom: 14px; border: 1px solid #222; }
     .alert.ok { background: #0f0f0f; color: #f5f5f5; }
     .alert.err { background: #0f0f0f; color: #f5f5f5; border-color: #f5f5f5; }
+    .drag-handle { display: inline-block; padding: 4px 6px; border: 1px solid #2a2a2a; color: #f5f5f5; cursor: grab; user-select: none; }
+    tr.dragging td { background: #0f0f0f !important; opacity: 0.85; }
+    .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid #2a2a2a; background: #0a0a0a; color: #f5f5f5; cursor: pointer; }
+    .icon-btn:hover { background: #121212; }
+    .icon-btn.danger { border-color: #f5f5f5; }
+    .icon { width: 18px; height: 18px; fill: currentColor; display: block; }
   </style>
   {% block head_extra %}{% endblock %}
 </head>

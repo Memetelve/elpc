@@ -121,7 +121,9 @@ class Database:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
         if "display_order" not in cols:
             conn.execute("ALTER TABLE products ADD COLUMN display_order INTEGER")
-        conn.execute("UPDATE products SET display_order = id WHERE display_order IS NULL")
+        conn.execute(
+            "UPDATE products SET display_order = id WHERE display_order IS NULL"
+        )
         conn.commit()
 
     def add_product(self, name: str, url: str, source: str) -> int:
@@ -208,6 +210,27 @@ class Database:
             conn.execute(
                 "UPDATE products SET display_order = ? WHERE id = ?",
                 (current_order, other_id),
+            )
+            conn.commit()
+
+    def set_product_order(self, ordered_product_ids: list[int]) -> None:
+        if not ordered_product_ids:
+            return
+
+        with self.connect() as conn:
+            rows = conn.execute("SELECT id FROM products").fetchall()
+            existing = {int(r["id"]) for r in rows}
+
+            # Validate: caller must provide a permutation of all products.
+            provided = [int(x) for x in ordered_product_ids]
+            if len(set(provided)) != len(provided):
+                raise ValueError("Duplicate product ids")
+            if set(provided) != existing:
+                raise ValueError("Order must include all product ids")
+
+            conn.executemany(
+                "UPDATE products SET display_order = ? WHERE id = ?",
+                [(idx + 1, pid) for idx, pid in enumerate(provided)],
             )
             conn.commit()
 

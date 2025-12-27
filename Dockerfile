@@ -7,14 +7,15 @@ WORKDIR /app
 
 # System deps (minimal). Add playwright browsers if needed.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md ./
 COPY src ./src
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
+    pip install --no-cache-dir . && \
+    python -m playwright install --with-deps chromium
 
 # Defaults (override via env):
 # - ELPC_WEB_HOST (default 0.0.0.0)

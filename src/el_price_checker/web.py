@@ -49,7 +49,11 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             change_24h = None
             if o and o.price_cents is not None:
                 prev = database.get_priced_observation_at_or_before(p.id, cutoff_24h)
-                if prev and prev.price_cents is not None and (prev.currency == o.currency):
+                if (
+                    prev
+                    and prev.price_cents is not None
+                    and (prev.currency == o.currency)
+                ):
                     change_24h = (o.price_cents - prev.price_cents) / 100.0
 
             out.append(
@@ -89,7 +93,11 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         change_24h = None
         if latest and latest.price_cents is not None:
             prev = database.get_priced_observation_at_or_before(product_id, cutoff_24h)
-            if prev and prev.price_cents is not None and (prev.currency == latest.currency):
+            if (
+                prev
+                and prev.price_cents is not None
+                and (prev.currency == latest.currency)
+            ):
                 change_24h = (latest.price_cents - prev.price_cents) / 100.0
 
         view = {
@@ -183,6 +191,21 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             database.move_product(product_id, direction=direction)
         except ValueError:
             return RedirectResponse(url="/?err=Invalid%20direction", status_code=303)
+        return RedirectResponse(url="/?msg=Reordered", status_code=303)
+
+    @app.post("/reorder")
+    def reorder_products(order: str = Form(...)):
+        raw = [part.strip() for part in order.split(",") if part.strip()]
+        try:
+            ids = [int(x) for x in raw]
+        except ValueError:
+            return RedirectResponse(url="/?err=Invalid%20order", status_code=303)
+
+        try:
+            database.set_product_order(ids)
+        except ValueError:
+            return RedirectResponse(url="/?err=Invalid%20order", status_code=303)
+
         return RedirectResponse(url="/?msg=Reordered", status_code=303)
 
     return app
