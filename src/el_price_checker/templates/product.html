@@ -12,6 +12,16 @@
     <div class="muted" style="margin-bottom:8px;">{{ product.source }} &middot; <a href="{{ product.url }}" target="_blank">open product page</a></div>
     <div style="display:flex; gap:16px; align-items: center; flex-wrap: wrap;">
       <div><span class="muted">Last price</span><div style="font-size:26px;">{% if product.last_price %}{{ '%.2f' % product.last_price }} {{ product.currency }}{% else %}n/a{% endif %}</div></div>
+      <div>
+        <span class="muted">24h change</span>
+        <div>
+          {% if product.change_24h is not none %}
+            {% if product.change_24h > 0 %}+{% endif %}{{ '%.2f' % product.change_24h }} {{ product.currency }}
+          {% else %}
+            <span class="muted">n/a</span>
+          {% endif %}
+        </div>
+      </div>
       <div><span class="muted">Last seen</span><div>{{ product.last_seen or 'n/a' }}</div></div>
       {% if product.error %}<div class="tag" style="border-color:#f5f5f5;color:#f5f5f5;">{{ product.error }}</div>{% endif %}
     </div>

@@ -244,6 +244,36 @@ class Database:
             )
             return int(cur.lastrowid)
 
+    def get_priced_observation_at_or_before(
+        self, product_id: int, ts: int
+    ) -> Observation | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, product_id, ts, price_cents, currency, in_stock, title, raw_price_text, error
+                FROM observations
+                WHERE product_id = ?
+                  AND ts <= ?
+                  AND price_cents IS NOT NULL
+                ORDER BY ts DESC
+                LIMIT 1
+                """,
+                (product_id, int(ts)),
+            ).fetchone()
+        if not row:
+            return None
+        return Observation(
+            id=int(row["id"]),
+            product_id=int(row["product_id"]),
+            ts=int(row["ts"]),
+            price_cents=row["price_cents"],
+            currency=row["currency"],
+            in_stock=(None if row["in_stock"] is None else bool(int(row["in_stock"]))),
+            title=row["title"],
+            raw_price_text=row["raw_price_text"],
+            error=row["error"],
+        )
+
     def get_latest_observations(self) -> dict[int, Observation]:
         with self.connect() as conn:
             rows = conn.execute(

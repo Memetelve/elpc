@@ -12,6 +12,7 @@
           <th>ID</th>
           <th>Name</th>
           <th>Last price</th>
+          <th>24h</th>
           <th>Seen</th>
           <th></th>
         </tr>
@@ -39,6 +40,13 @@
             </form>
           </td>
           <td>{% if p.last_price %}{{ '%.2f' % p.last_price }} {{ p.currency }}{% else %}<span class="muted">n/a</span>{% endif %}</td>
+          <td>
+            {% if p.change_24h is not none %}
+              {% if p.change_24h > 0 %}+{% endif %}{{ '%.2f' % p.change_24h }} {{ p.currency }}
+            {% else %}
+              <span class="muted">n/a</span>
+            {% endif %}
+          </td>
           <td class="muted">{{ p.last_seen or '' }}</td>
           <td>{% if p.error %}<span class="tag" style="border-color:#f5f5f5;color:#f5f5f5;">{{ p.error }}</span>{% endif %}</td>
         </tr>

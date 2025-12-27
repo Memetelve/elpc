@@ -40,9 +40,18 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     def _product_views() -> list[dict[str, Any]]:
         products = database.get_products()
         latest = database.get_latest_observations()
+        now_ts = int(datetime.datetime.now().timestamp())
+        cutoff_24h = now_ts - 24 * 60 * 60
         out: list[dict[str, Any]] = []
         for p in products:
             o = latest.get(p.id)
+
+            change_24h = None
+            if o and o.price_cents is not None:
+                prev = database.get_priced_observation_at_or_before(p.id, cutoff_24h)
+                if prev and prev.price_cents is not None and (prev.currency == o.currency):
+                    change_24h = (o.price_cents - prev.price_cents) / 100.0
+
             out.append(
                 {
                     "id": p.id,
@@ -55,6 +64,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
                     "currency": "" if not o else (o.currency or ""),
                     "last_seen": _fmt_ts(None if not o else o.ts),
                     "error": None if not o else o.error,
+                    "change_24h": change_24h,
                 }
             )
         return out
@@ -73,6 +83,15 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
         latest = database.get_latest_observations().get(product_id)
+        now_ts = int(datetime.datetime.now().timestamp())
+        cutoff_24h = now_ts - 24 * 60 * 60
+
+        change_24h = None
+        if latest and latest.price_cents is not None:
+            prev = database.get_priced_observation_at_or_before(product_id, cutoff_24h)
+            if prev and prev.price_cents is not None and (prev.currency == latest.currency):
+                change_24h = (latest.price_cents - prev.price_cents) / 100.0
+
         view = {
             "id": product.id,
             "name": product.name,
@@ -84,6 +103,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             "currency": "" if not latest else (latest.currency or ""),
             "last_seen": _fmt_ts(None if not latest else latest.ts),
             "error": None if not latest else latest.error,
+            "change_24h": change_24h,
         }
         return templates.TemplateResponse(
             "product.html", {"request": request, "product": view}
