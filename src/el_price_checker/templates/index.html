@@ -72,17 +72,91 @@
     <p class="muted">Nothing tracked yet.</p>
     {% endif %}
   </div>
-  <div class="card">
-    <h3 style="margin-top:0;">Add product</h3>
-    <form method="post" action="/add">
-      <label for="url">Product URL</label>
-      <input id="url" name="url" type="text" placeholder="https://..." required>
-      <label for="name" style="margin-top:12px;">Display name (optional)</label>
-      <input id="name" name="name" type="text" placeholder="Will fall back to page title">
-      <div style="margin-top:14px; display:flex; gap:10px;">
-        <button class="btn primary" type="submit">Add and fetch</button>
-      </div>
-    </form>
+  <div class="grid" style="grid-template-columns: 1fr; align-content: start;">
+    <div class="card">
+      <h3 style="margin-top:0;">Add product</h3>
+      <form method="post" action="/add">
+        <label for="url">Product URL</label>
+        <input id="url" name="url" type="text" placeholder="https://..." required>
+        <label for="name" style="margin-top:12px;">Display name (optional)</label>
+        <input id="name" name="name" type="text" placeholder="Will fall back to page title">
+        <div style="margin-top:14px; display:flex; gap:10px;">
+          <button class="btn primary" type="submit">Add and fetch</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Search (top 5)</h3>
+      <form method="post" action="/search" style="display:grid; gap:10px;">
+        <div>
+          <label for="store">Store</label>
+          <select id="store" name="store">
+            <option value="xkom" {% if search_store in ['xkom','x-kom','x-kom.pl','xkom.pl','x-kom'] %}selected{% endif %}>x-kom</option>
+            <option value="morele" {% if search_store in ['morele','morele.net'] %}selected{% endif %}>morele</option>
+          </select>
+        </div>
+        <div>
+          <label for="query">Query</label>
+          <input id="query" name="query" type="text" value="{{ search_query or '' }}" placeholder="e.g. RTX 4070" required>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn" type="submit">Search</button>
+        </div>
+      </form>
+
+      {% if search_results is not none %}
+        <div style="margin-top:14px;">
+          {% if not search_results %}
+            <div class="muted">No results.</div>
+          {% else %}
+            <form method="post" action="/add-search" style="display:grid; gap:10px;">
+              <input type="hidden" name="count" value="{{ search_results|length }}" />
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:28px;"></th>
+                    <th>Name (editable)</th>
+                    <th style="width:90px;">Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for h in search_results %}
+                    {% set i = loop.index0 %}
+                    <tr>
+                      <td>
+                        <input type="checkbox" name="select_{{ i }}" value="1" aria-label="Select" />
+                      </td>
+                      <td>
+                        <input type="hidden" name="url_{{ i }}" value="{{ h.url }}" />
+                        <input type="hidden" name="source_{{ i }}" value="{{ h.source }}" />
+                        <input type="hidden" name="price_cents_{{ i }}" value="{{ '' if h.price_cents is none else h.price_cents }}" />
+                        <input type="hidden" name="currency_{{ i }}" value="{{ '' if not h.currency else h.currency }}" />
+
+                        <input name="name_{{ i }}" type="text" value="{{ h.name }}" />
+                        <div class="muted" style="margin-top:6px;">
+                          {{ h.source }} &middot; <a href="{{ h.url }}" target="_blank">open</a>
+                        </div>
+                      </td>
+                      <td class="muted">
+                        {% if h.price_cents is not none %}
+                          {{ '%.2f' % (h.price_cents / 100.0) }} {{ h.currency or '' }}
+                        {% else %}
+                          n/a
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              <div style="display:flex; gap:10px;">
+                <button class="btn primary" type="submit">Add selected</button>
+              </div>
+            </form>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
   </div>
 </div>
 {% endblock %}

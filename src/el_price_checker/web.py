@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from .db import Database
 from .fetch import detect_source, fetch_html
 from .parse import extract_price
+from .search import search_products
 from .settings import Settings
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -78,8 +79,156 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         products = _product_views()
         return templates.TemplateResponse(
             "index.html",
-            {"request": request, "products": products, "msg": msg, "err": err},
+            {
+                "request": request,
+                "products": products,
+                "msg": msg,
+                "err": err,
+                "search_store": None,
+                "search_query": None,
+                "search_results": None,
+            },
         )
+
+    @app.post("/search", response_class=HTMLResponse)
+    async def search(request: Request, store: str = Form(...), query: str = Form(...)):
+        q = query.strip()
+        if not q:
+            products = _product_views()
+            return templates.TemplateResponse(
+                "index.html",
+                {
+                    "request": request,
+                    "products": products,
+                    "msg": None,
+                    "err": "Search query cannot be empty",
+                    "search_store": store,
+                    "search_query": q,
+                    "search_results": [],
+                },
+            )
+
+        try:
+            hits = await search_products(store, q, limit=5)
+        except ValueError as e:
+            products = _product_views()
+            return templates.TemplateResponse(
+                "index.html",
+                {
+                    "request": request,
+                    "products": products,
+                    "msg": None,
+                    "err": str(e),
+                    "search_store": store,
+                    "search_query": q,
+                    "search_results": [],
+                },
+            )
+        except Exception:
+            products = _product_views()
+            return templates.TemplateResponse(
+                "index.html",
+                {
+                    "request": request,
+                    "products": products,
+                    "msg": None,
+                    "err": "Search failed",
+                    "search_store": store,
+                    "search_query": q,
+                    "search_results": [],
+                },
+            )
+
+        results: list[dict[str, Any]] = []
+        for h in hits:
+            results.append(
+                {
+                    "name": h.name,
+                    "url": h.url,
+                    "source": h.source,
+                    "price_cents": h.price_cents,
+                    "currency": h.currency,
+                }
+            )
+
+        products = _product_views()
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "products": products,
+                "msg": None,
+                "err": None,
+                "search_store": store,
+                "search_query": q,
+                "search_results": results,
+            },
+        )
+
+    @app.post("/add-search")
+    async def add_from_search(request: Request):
+        form = await request.form()
+        try:
+            count = int(str(form.get("count") or "0"))
+        except ValueError:
+            count = 0
+
+        if count <= 0:
+            return RedirectResponse(url="/?err=Nothing%20to%20add", status_code=303)
+
+        added = 0
+        skipped = 0
+        for i in range(count):
+            if form.get(f"select_{i}") is None:
+                continue
+
+            url = str(form.get(f"url_{i}") or "").strip()
+            source = str(form.get(f"source_{i}") or "").strip()
+            name = str(form.get(f"name_{i}") or "").strip()
+            if not name:
+                name = url
+
+            price_cents_raw = form.get(f"price_cents_{i}")
+            currency = str(form.get(f"currency_{i}") or "").strip() or None
+            try:
+                price_cents = (
+                    None
+                    if price_cents_raw in (None, "")
+                    else int(str(price_cents_raw))
+                )
+            except ValueError:
+                price_cents = None
+
+            if not url or not source:
+                skipped += 1
+                continue
+
+            try:
+                pid = database.add_product(name, url, source)
+            except sqlite3.IntegrityError:
+                skipped += 1
+                continue
+
+            database.add_observation(
+                pid,
+                price_cents=price_cents,
+                currency=currency,
+                in_stock=None,
+                title=None,
+                raw_price_text=None,
+                error=None,
+            )
+            added += 1
+
+        if added == 0 and skipped > 0:
+            return RedirectResponse(
+                url=f"/?err=Nothing%20added%20(skipped%20{skipped})", status_code=303
+            )
+        if skipped:
+            return RedirectResponse(
+                url=f"/?msg=Added%20{added}%20(skipped%20{skipped})", status_code=303
+            )
+        return RedirectResponse(url=f"/?msg=Added%20{added}", status_code=303)
 
     @app.get("/product/{product_id}", response_class=HTMLResponse)
     def product_page(product_id: int, request: Request):
