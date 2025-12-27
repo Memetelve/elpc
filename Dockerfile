@@ -16,6 +16,8 @@ COPY src ./src
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
-EXPOSE 8000
-
-CMD ["elpc", "serve", "--host", "0.0.0.0", "--port", "8000", "--db", "/data/prices.sqlite3"]
+# Defaults (override via env):
+# - ELPC_WEB_HOST (default 0.0.0.0)
+# - ELPC_WEB_PORT (default 8000)
+# - ELPC_DB       (default /data/prices.sqlite3)
+CMD ["python", "-m", "el_price_checker.container_entrypoint"]

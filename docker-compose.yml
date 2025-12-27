@@ -3,12 +3,14 @@ version: "3.9"
 services:
   web:
     build: .
-    command: ["elpc", "serve", "--host", "0.0.0.0", "--port", "8000", "--db", "/data/prices.sqlite3"]
     ports:
-      - "8000:8000"
+      - "${ELPC_WEB_PORT:-8000}:${ELPC_WEB_PORT:-8000}"
     volumes:
       - elpc-data:/data
     environment:
+      - ELPC_DB=/data/prices.sqlite3
+      - ELPC_WEB_HOST=0.0.0.0
+      - ELPC_WEB_PORT=${ELPC_WEB_PORT:-8000}
       - ELPC_COOKIE_XKOM=${ELPC_COOKIE_XKOM:-}
       - ELPC_COOKIE_MORELE=${ELPC_COOKIE_MORELE:-}
       - ELPC_COOKIE_AMAZON=${ELPC_COOKIE_AMAZON:-}
@@ -18,6 +20,7 @@ services:
     volumes:
       - elpc-data:/data
     environment:
+      - ELPC_DB=/data/prices.sqlite3
       - ELPC_COOKIE_XKOM=${ELPC_COOKIE_XKOM:-}
       - ELPC_COOKIE_MORELE=${ELPC_COOKIE_MORELE:-}
       - ELPC_COOKIE_AMAZON=${ELPC_COOKIE_AMAZON:-}

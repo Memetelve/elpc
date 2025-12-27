@@ -75,6 +75,7 @@ docker compose up --build
 ```
 
 Web UI: http://localhost:8000 (or your host). The worker polls every 900s by default.
+To change the web port: `ELPC_WEB_PORT=8080 docker compose up --build` (then open http://localhost:8080).
 You can set cookies to bypass WAFs via env vars: `ELPC_COOKIE_XKOM`, `ELPC_COOKIE_MORELE`, `ELPC_COOKIE_AMAZON`.
 
 - Clear all data (confirmation required unless --yes):
