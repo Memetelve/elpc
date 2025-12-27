@@ -11,9 +11,6 @@ services:
       - ELPC_DB=/data/prices.sqlite3
       - ELPC_WEB_HOST=0.0.0.0
       - ELPC_WEB_PORT=${ELPC_WEB_PORT:-8000}
-      - ELPC_COOKIE_XKOM=${ELPC_COOKIE_XKOM:-}
-      - ELPC_COOKIE_MORELE=${ELPC_COOKIE_MORELE:-}
-      - ELPC_COOKIE_AMAZON=${ELPC_COOKIE_AMAZON:-}
   worker:
     build: .
     command: ["elpc", "run", "--interval", "900", "--db", "/data/prices.sqlite3"]
@@ -21,9 +18,6 @@ services:
       - elpc-data:/data
     environment:
       - ELPC_DB=/data/prices.sqlite3
-      - ELPC_COOKIE_XKOM=${ELPC_COOKIE_XKOM:-}
-      - ELPC_COOKIE_MORELE=${ELPC_COOKIE_MORELE:-}
-      - ELPC_COOKIE_AMAZON=${ELPC_COOKIE_AMAZON:-}
 
 volumes:
   elpc-data:

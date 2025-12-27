@@ -157,13 +157,14 @@ def extract_price(html: str) -> ParsedPrice:
         cents = _decimal_to_cents(_clean_number(amt))
         meta_cur = doc.css_first('meta[property="product:price:currency"]')
         cur = meta_cur.attributes.get("content") if meta_cur else None
-        return ParsedPrice(
-            price_cents=cents,
-            currency=cur,
-            title=title,
-            raw_price_text=amt,
-            in_stock=None,
-        )
+        if cents is not None and cents > 0:
+            return ParsedPrice(
+                price_cents=cents,
+                currency=cur,
+                title=title,
+                raw_price_text=amt,
+                in_stock=None,
+            )
 
     # 3) Regex fallback
     text = doc.text(separator=" ")
@@ -173,13 +174,14 @@ def extract_price(html: str) -> ParsedPrice:
         cur_raw = m.group("cur")
         currency = "PLN" if cur_raw.lower() in {"zł", "pln"} else ("EUR" if cur_raw in {"EUR", "€"} else None)
         cents = _decimal_to_cents(_clean_number(raw_num))
-        return ParsedPrice(
-            price_cents=cents,
-            currency=currency,
-            title=title,
-            raw_price_text=f"{raw_num} {cur_raw}",
-            in_stock=None,
-        )
+        if cents is not None and cents > 0:
+            return ParsedPrice(
+                price_cents=cents,
+                currency=currency,
+                title=title,
+                raw_price_text=f"{raw_num} {cur_raw}",
+                in_stock=None,
+            )
 
     return ParsedPrice(
         price_cents=None,

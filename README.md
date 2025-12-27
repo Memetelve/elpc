@@ -7,8 +7,8 @@ A small `uv`-managed Python tool that periodically checks product pages (x-kom, 
 - This tool works best when you add **direct product URLs**. Searching/crawling is intentionally out of scope.
 - Some sites (especially Amazon) may block automated requests (CAPTCHA/robot checks). When that happens, the tool stores the error so you can see failures in history.
 - Respect the target sites’ Terms of Service and rate limits.
-- If you hit HTTP 403 on x-kom/morele/amazon, copy the `Cookie` header from your browser’s DevTools for that site and set an env var before running: `ELPC_COOKIE_XKOM`, `ELPC_COOKIE_MORELE`, `ELPC_COOKIE_AMAZON`, or generic `ELPC_COOKIE`.
-- x-kom may return zero results to automated searches; if you see “No results found”, try a more precise phrase and/or set `ELPC_COOKIE_XKOM` from your browser session. Direct product URLs are most reliable.
+- Some sites may block automated requests (HTTP 403 / bot checks). When that happens, the tool stores the error in history; the fetcher will also try a Playwright (browser) fallback when possible.
+- Search pages can be flaky/blocked; direct product URLs are most reliable.
 
 ## Install (uv)
 
@@ -76,7 +76,6 @@ docker compose up --build
 
 Web UI: http://localhost:8000 (or your host). The worker polls every 900s by default.
 To change the web port: `ELPC_WEB_PORT=8080 docker compose up --build` (then open http://localhost:8080).
-You can set cookies to bypass WAFs via env vars: `ELPC_COOKIE_XKOM`, `ELPC_COOKIE_MORELE`, `ELPC_COOKIE_AMAZON`.
 
 - Clear all data (confirmation required unless --yes):
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -26,30 +25,6 @@ def detect_source(url: str) -> str:
     if "amazon." in host:
         return "amazon"
     return host or "unknown"
-
-
-def _normalize_cookie(raw: str) -> str:
-    s = raw.strip()
-    # Allow pasting JSON from DevTools export
-    try:
-        import json
-
-        data = json.loads(s)
-        if isinstance(data, dict):
-            if "Request Cookies" in data and isinstance(data["Request Cookies"], dict):
-                pairs = data["Request Cookies"]
-                return "; ".join(f"{k}={v}" for k, v in pairs.items())
-            if all(isinstance(v, str) for v in data.values()):
-                return "; ".join(f"{k}={v}" for k, v in data.items())
-    except Exception:
-        pass
-
-    for prefix in ["cookie:", "Cookie:"]:
-        if s.lower().startswith(prefix.rstrip(":").lower()):
-            s = s[len(prefix):].strip()
-
-    s = s.replace("\r", " ").replace("\n", "; ")
-    return s
 
 
 def _looks_like_block(text: str) -> bool:
@@ -93,19 +68,6 @@ def _headers_for_source(source: str) -> dict[str, str]:
         base["sec-fetch-site"] = "same-origin"
     if source == "amazon":
         base["accept-language"] = "pl-PL,pl;q=0.9,en-US;q=0.7,en;q=0.6"
-
-    # Optional cookie injection to bypass WAFs. Copy from browser DevTools.
-    cookie_env = os.getenv(
-        {
-            "x-kom": "ELPC_COOKIE_XKOM",
-            "morele": "ELPC_COOKIE_MORELE",
-            "amazon": "ELPC_COOKIE_AMAZON",
-        }.get(source, "ELPC_COOKIE"),
-    ) or os.getenv("ELPC_COOKIE")
-    if cookie_env:
-        normalized = _normalize_cookie(cookie_env)
-        if normalized:
-            base["cookie"] = normalized
     return base
 
 
