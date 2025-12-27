@@ -8,6 +8,7 @@
     <table>
       <thead>
         <tr>
+          <th></th>
           <th>ID</th>
           <th>Name</th>
           <th>Last price</th>
@@ -18,10 +19,24 @@
       <tbody>
         {% for p in products %}
         <tr>
+          <td style="white-space:nowrap;">
+            <form method="post" action="/move/{{ p.id }}" style="display:inline;">
+              <input type="hidden" name="direction" value="up" />
+              <button class="btn" type="submit" title="Move up">Up</button>
+            </form>
+            <form method="post" action="/move/{{ p.id }}" style="display:inline; margin-left:6px;">
+              <input type="hidden" name="direction" value="down" />
+              <button class="btn" type="submit" title="Move down">Down</button>
+            </form>
+          </td>
           <td>{{ p.id }}</td>
           <td>
             <div><a href="/product/{{ p.id }}">{{ p.name }}</a></div>
             <div class="muted">{{ p.source }} &middot; <a href="{{ p.url }}" target="_blank">link</a></div>
+            <form method="post" action="/rename/{{ p.id }}" style="margin-top:10px; display:flex; gap:10px; align-items:center;">
+              <input name="name" type="text" value="{{ p.name }}" style="max-width:460px;" />
+              <button class="btn" type="submit">Rename</button>
+            </form>
           </td>
           <td>{% if p.last_price %}{{ '%.2f' % p.last_price }} {{ p.currency }}{% else %}<span class="muted">n/a</span>{% endif %}</td>
           <td class="muted">{{ p.last_seen or '' }}</td>

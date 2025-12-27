@@ -135,4 +135,24 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             conn.commit()
         return RedirectResponse(url="/?msg=Deleted", status_code=303)
 
+    @app.post("/rename/{product_id}")
+    def rename_product(product_id: int, name: str = Form(...)):
+        new_name = name.strip()
+        if not new_name:
+            return RedirectResponse(url="/?err=Name%20cannot%20be%20empty", status_code=303)
+        if not database.get_product(product_id):
+            raise HTTPException(status_code=404, detail="Product not found")
+        database.upsert_product_name(product_id, new_name)
+        return RedirectResponse(url="/?msg=Renamed", status_code=303)
+
+    @app.post("/move/{product_id}")
+    def move_product(product_id: int, direction: str = Form(...)):
+        if not database.get_product(product_id):
+            raise HTTPException(status_code=404, detail="Product not found")
+        try:
+            database.move_product(product_id, direction=direction)
+        except ValueError:
+            return RedirectResponse(url="/?err=Invalid%20direction", status_code=303)
+        return RedirectResponse(url="/?msg=Reordered", status_code=303)
+
     return app

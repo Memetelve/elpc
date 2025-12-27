@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,7 @@ class Product:
     url: str
     source: str
     created_at: int
+    display_order: int
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,10 @@ class Database:
         with self.connect() as conn:
             current = conn.execute("PRAGMA user_version").fetchone()[0]
             if current == 0:
-                self._create_v1(conn)
+                self._create_v2(conn)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            elif current == 1:
+                self._migrate_1_to_2(conn)
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif current == SCHEMA_VERSION:
                 return
@@ -83,26 +87,68 @@ class Database:
             """
         )
 
+        def _create_v2(self, conn: sqlite3.Connection) -> None:
+                conn.executescript(
+                        """
+                        CREATE TABLE IF NOT EXISTS products (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT NOT NULL,
+                            url TEXT NOT NULL UNIQUE,
+                            source TEXT NOT NULL,
+                            created_at INTEGER NOT NULL,
+                            display_order INTEGER NOT NULL
+                        );
+
+                        CREATE TABLE IF NOT EXISTS observations (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            product_id INTEGER NOT NULL,
+                            ts INTEGER NOT NULL,
+                            price_cents INTEGER,
+                            currency TEXT,
+                            in_stock INTEGER,
+                            title TEXT,
+                            raw_price_text TEXT,
+                            error TEXT,
+                            FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+                        );
+
+                        CREATE INDEX IF NOT EXISTS idx_observations_product_ts
+                            ON observations(product_id, ts);
+                        """
+                )
+
+        def _migrate_1_to_2(self, conn: sqlite3.Connection) -> None:
+                cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
+                if "display_order" not in cols:
+                        conn.execute("ALTER TABLE products ADD COLUMN display_order INTEGER")
+                conn.execute("UPDATE products SET display_order = id WHERE display_order IS NULL")
+                conn.commit()
+
     def add_product(self, name: str, url: str, source: str) -> int:
         now = int(time.time())
         with self.connect() as conn:
+            next_order = conn.execute(
+                "SELECT COALESCE(MAX(display_order), 0) + 1 FROM products"
+            ).fetchone()[0]
             cur = conn.execute(
-                "INSERT INTO products(name, url, source, created_at) VALUES (?, ?, ?, ?)",
-                (name, url, source, now),
+                "INSERT INTO products(name, url, source, created_at, display_order) VALUES (?, ?, ?, ?, ?)",
+                (name, url, source, now, int(next_order)),
             )
-            return int(cur.lastrowid)
+            pid = int(cur.lastrowid)
+            conn.commit()
+            return pid
 
     def get_products(self) -> list[Product]:
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT id, name, url, source, created_at FROM products ORDER BY id"
+                "SELECT id, name, url, source, created_at, display_order FROM products ORDER BY display_order, id"
             ).fetchall()
         return [Product(**dict(r)) for r in rows]
 
     def get_product(self, product_id: int) -> Product | None:
         with self.connect() as conn:
             row = conn.execute(
-                "SELECT id, name, url, source, created_at FROM products WHERE id = ?",
+                "SELECT id, name, url, source, created_at, display_order FROM products WHERE id = ?",
                 (product_id,),
             ).fetchone()
         return Product(**dict(row)) if row else None
@@ -110,6 +156,58 @@ class Database:
     def upsert_product_name(self, product_id: int, name: str) -> None:
         with self.connect() as conn:
             conn.execute("UPDATE products SET name = ? WHERE id = ?", (name, product_id))
+            conn.commit()
+
+    def move_product(self, product_id: int, *, direction: str) -> None:
+        if direction not in {"up", "down"}:
+            raise ValueError("direction must be 'up' or 'down'")
+
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, display_order FROM products WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            if not row:
+                return
+            current_order = int(row["display_order"])
+
+            if direction == "up":
+                other = conn.execute(
+                    """
+                    SELECT id, display_order
+                    FROM products
+                    WHERE display_order < ?
+                    ORDER BY display_order DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (current_order,),
+                ).fetchone()
+            else:
+                other = conn.execute(
+                    """
+                    SELECT id, display_order
+                    FROM products
+                    WHERE display_order > ?
+                    ORDER BY display_order ASC, id ASC
+                    LIMIT 1
+                    """,
+                    (current_order,),
+                ).fetchone()
+
+            if not other:
+                return
+
+            other_id = int(other["id"])
+            other_order = int(other["display_order"])
+            conn.execute(
+                "UPDATE products SET display_order = ? WHERE id = ?",
+                (other_order, product_id),
+            )
+            conn.execute(
+                "UPDATE products SET display_order = ? WHERE id = ?",
+                (current_order, other_id),
+            )
+            conn.commit()
 
     def add_observation(
         self,
