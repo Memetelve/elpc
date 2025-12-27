@@ -49,7 +49,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
                     "name": p.name,
                     "source": p.source,
                     "url": p.url,
-                    "last_price": None if not o or o.price_cents is None else o.price_cents / 100.0,
+                    "last_price": None
+                    if not o or o.price_cents is None
+                    else o.price_cents / 100.0,
                     "currency": "" if not o else (o.currency or ""),
                     "last_seen": _fmt_ts(None if not o else o.ts),
                     "error": None if not o else o.error,
@@ -76,12 +78,16 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             "name": product.name,
             "source": product.source,
             "url": product.url,
-            "last_price": None if not latest or latest.price_cents is None else latest.price_cents / 100.0,
+            "last_price": None
+            if not latest or latest.price_cents is None
+            else latest.price_cents / 100.0,
             "currency": "" if not latest else (latest.currency or ""),
             "last_seen": _fmt_ts(None if not latest else latest.ts),
             "error": None if not latest else latest.error,
         }
-        return templates.TemplateResponse("product.html", {"request": request, "product": view})
+        return templates.TemplateResponse(
+            "product.html", {"request": request, "product": view}
+        )
 
     @app.get("/api/products")
     def api_products():
@@ -98,7 +104,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             out.append(
                 {
                     "ts_ms": obs.ts * 1000,
-                    "price": None if obs.price_cents is None else obs.price_cents / 100.0,
+                    "price": None
+                    if obs.price_cents is None
+                    else obs.price_cents / 100.0,
                     "currency": obs.currency,
                     "error": obs.error,
                 }
@@ -139,7 +147,9 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     def rename_product(product_id: int, name: str = Form(...)):
         new_name = name.strip()
         if not new_name:
-            return RedirectResponse(url="/?err=Name%20cannot%20be%20empty", status_code=303)
+            return RedirectResponse(
+                url="/?err=Name%20cannot%20be%20empty", status_code=303
+            )
         if not database.get_product(product_id):
             raise HTTPException(status_code=404, detail="Product not found")
         database.upsert_product_name(product_id, new_name)

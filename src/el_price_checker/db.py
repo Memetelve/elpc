@@ -87,42 +87,42 @@ class Database:
             """
         )
 
-        def _create_v2(self, conn: sqlite3.Connection) -> None:
-                conn.executescript(
-                        """
-                        CREATE TABLE IF NOT EXISTS products (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            name TEXT NOT NULL,
-                            url TEXT NOT NULL UNIQUE,
-                            source TEXT NOT NULL,
-                            created_at INTEGER NOT NULL,
-                            display_order INTEGER NOT NULL
-                        );
+    def _create_v2(self, conn: sqlite3.Connection) -> None:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS products (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              url TEXT NOT NULL UNIQUE,
+              source TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              display_order INTEGER NOT NULL
+            );
 
-                        CREATE TABLE IF NOT EXISTS observations (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            product_id INTEGER NOT NULL,
-                            ts INTEGER NOT NULL,
-                            price_cents INTEGER,
-                            currency TEXT,
-                            in_stock INTEGER,
-                            title TEXT,
-                            raw_price_text TEXT,
-                            error TEXT,
-                            FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
-                        );
+            CREATE TABLE IF NOT EXISTS observations (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              product_id INTEGER NOT NULL,
+              ts INTEGER NOT NULL,
+              price_cents INTEGER,
+              currency TEXT,
+              in_stock INTEGER,
+              title TEXT,
+              raw_price_text TEXT,
+              error TEXT,
+              FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
+            );
 
-                        CREATE INDEX IF NOT EXISTS idx_observations_product_ts
-                            ON observations(product_id, ts);
-                        """
-                )
+            CREATE INDEX IF NOT EXISTS idx_observations_product_ts
+              ON observations(product_id, ts);
+            """
+        )
 
-        def _migrate_1_to_2(self, conn: sqlite3.Connection) -> None:
-                cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
-                if "display_order" not in cols:
-                        conn.execute("ALTER TABLE products ADD COLUMN display_order INTEGER")
-                conn.execute("UPDATE products SET display_order = id WHERE display_order IS NULL")
-                conn.commit()
+    def _migrate_1_to_2(self, conn: sqlite3.Connection) -> None:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
+        if "display_order" not in cols:
+            conn.execute("ALTER TABLE products ADD COLUMN display_order INTEGER")
+        conn.execute("UPDATE products SET display_order = id WHERE display_order IS NULL")
+        conn.commit()
 
     def add_product(self, name: str, url: str, source: str) -> int:
         now = int(time.time())
@@ -155,7 +155,9 @@ class Database:
 
     def upsert_product_name(self, product_id: int, name: str) -> None:
         with self.connect() as conn:
-            conn.execute("UPDATE products SET name = ? WHERE id = ?", (name, product_id))
+            conn.execute(
+                "UPDATE products SET name = ? WHERE id = ?", (name, product_id)
+            )
             conn.commit()
 
     def move_product(self, product_id: int, *, direction: str) -> None:
@@ -292,7 +294,9 @@ class Database:
                     ts=int(r["ts"]),
                     price_cents=r["price_cents"],
                     currency=r["currency"],
-                    in_stock=(None if r["in_stock"] is None else bool(int(r["in_stock"]))),
+                    in_stock=(
+                        None if r["in_stock"] is None else bool(int(r["in_stock"]))
+                    ),
                     title=r["title"],
                     raw_price_text=r["raw_price_text"],
                     error=r["error"],
