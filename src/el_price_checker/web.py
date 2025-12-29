@@ -192,9 +192,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             currency = str(form.get(f"currency_{i}") or "").strip() or None
             try:
                 price_cents = (
-                    None
-                    if price_cents_raw in (None, "")
-                    else int(str(price_cents_raw))
+                    None if price_cents_raw in (None, "") else int(str(price_cents_raw))
                 )
             except ValueError:
                 price_cents = None

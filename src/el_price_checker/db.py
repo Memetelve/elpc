@@ -37,6 +37,17 @@ class Database:
     def __init__(self, path: Path):
         self.path = path
 
+    @staticmethod
+    def _median(values: list[int]) -> float:
+        if not values:
+            return 0.0
+        vals = sorted(values)
+        n = len(vals)
+        mid = n // 2
+        if n % 2 == 1:
+            return float(vals[mid])
+        return (vals[mid - 1] + vals[mid]) / 2.0
+
     def connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
@@ -46,6 +57,7 @@ class Database:
     def init(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as conn:
+            # Run migrations if needed; always proceed to cleaning.
             current = conn.execute("PRAGMA user_version").fetchone()[0]
             if current == 0:
                 self._create_v2(conn)
@@ -53,10 +65,11 @@ class Database:
             elif current == 1:
                 self._migrate_1_to_2(conn)
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-            elif current == SCHEMA_VERSION:
-                return
-            else:
+            elif current != SCHEMA_VERSION:
                 raise RuntimeError(f"Unsupported schema version: {current}")
+
+        # Clean any pre-existing extreme outliers so future reads use sane baselines.
+        self.clean_price_outliers()
 
     def _create_v1(self, conn: sqlite3.Connection) -> None:
         conn.executescript(
@@ -249,6 +262,28 @@ class Database:
         ts_val = int(time.time()) if ts is None else int(ts)
         in_stock_val = None if in_stock is None else (1 if in_stock else 0)
         with self.connect() as conn:
+            # Discard impossible or extreme prices before insert.
+            price_to_store = price_cents
+            err_to_store = error
+
+            if price_cents is not None:
+                if price_cents <= 0:
+                    price_to_store = None
+                    if not err_to_store:
+                        err_to_store = "Discarded non-positive price"
+                else:
+                    is_outlier, ref_median = self._is_outlier(
+                        conn, product_id, price_cents
+                    )
+                    if is_outlier:
+                        price_to_store = None
+                        if not err_to_store:
+                            err_to_store = (
+                                f"Discarded outlier vs median {ref_median / 100:.2f}"
+                                if ref_median
+                                else "Discarded outlier"
+                            )
+
             cur = conn.execute(
                 """
                 INSERT INTO observations(product_id, ts, price_cents, currency, in_stock, title, raw_price_text, error)
@@ -257,15 +292,47 @@ class Database:
                 (
                     product_id,
                     ts_val,
-                    price_cents,
+                    price_to_store,
                     currency,
                     in_stock_val,
                     title,
                     raw_price_text,
-                    error,
+                    err_to_store,
                 ),
             )
             return int(cur.lastrowid)
+
+    def _is_outlier(
+        self,
+        conn: sqlite3.Connection,
+        product_id: int,
+        price_cents: int,
+        *,
+        factor: float = 6.0,
+        min_samples: int = 3,
+        sample_limit: int = 50,
+    ) -> tuple[bool, float | None]:
+        rows = conn.execute(
+            """
+            SELECT price_cents
+            FROM observations
+            WHERE product_id = ? AND price_cents IS NOT NULL
+            ORDER BY ts DESC
+            LIMIT ?
+            """,
+            (product_id, sample_limit),
+        ).fetchall()
+        prices = [int(r[0]) for r in rows if r[0] is not None]
+        if len(prices) < min_samples:
+            return (False, None)
+        median = self._median(prices)
+        if median <= 0:
+            return (False, None)
+        lower = median / factor
+        upper = median * factor
+        if price_cents < lower or price_cents > upper:
+            return (True, median)
+        return (False, median)
 
     def get_priced_observation_at_or_before(
         self, product_id: int, ts: int
@@ -356,6 +423,57 @@ class Database:
                 )
             )
         return out
+
+    def clean_price_outliers(
+        self, *, factor: float = 6.0, min_samples: int = 3, sample_limit: int = 200
+    ) -> int:
+        """Remove historical observations that are extreme outliers per product.
+
+        Returns the number of observations deleted.
+        """
+
+        removed = 0
+        with self.connect() as conn:
+            # First drop impossible non-positive prices.
+            cur = conn.execute(
+                "DELETE FROM observations WHERE price_cents IS NOT NULL AND price_cents <= 0"
+            )
+            removed += cur.rowcount if cur.rowcount is not None else 0
+
+            product_ids = [int(r[0]) for r in conn.execute("SELECT id FROM products")]
+            for pid in product_ids:
+                rows = conn.execute(
+                    """
+                    SELECT id, price_cents
+                    FROM observations
+                    WHERE product_id = ? AND price_cents IS NOT NULL
+                    ORDER BY ts DESC
+                    LIMIT ?
+                    """,
+                    (pid, sample_limit),
+                ).fetchall()
+
+                prices = [int(r[1]) for r in rows if r[1] is not None]
+                if len(prices) < min_samples:
+                    continue
+
+                median = self._median(prices)
+                if median <= 0:
+                    continue
+                lower = median / factor
+                upper = median * factor
+
+                bad_ids = [int(r[0]) for r in rows if r[1] < lower or r[1] > upper]
+                if bad_ids:
+                    conn.executemany(
+                        "DELETE FROM observations WHERE id = ?",
+                        [(bid,) for bid in bad_ids],
+                    )
+                    removed += len(bad_ids)
+
+            conn.commit()
+
+        return removed
 
     def iter_observations(self, product_ids: Iterable[int] | None = None):
         with self.connect() as conn:
