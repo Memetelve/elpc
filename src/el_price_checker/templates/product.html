@@ -10,6 +10,20 @@
   <div class="card">
     <h2 style="margin-top:0;">{{ product.name }}</h2>
     <div class="muted" style="margin-bottom:8px;">{{ product.source }} &middot; <a href="{{ product.url }}" target="_blank">open product page</a></div>
+    {% if tags %}
+      <div class="tags-row" style="margin-bottom:8px;">
+        {% for t in tags %}
+          <form method="post" action="/product/{{ product.id }}/remove-tag/{{ t.id }}" style="display:flex; align-items:center; gap:6px;">
+            <span class="tag pill tag-swatch" style="--tag-color: {{ t.color }};">{{ t.name }}</span>
+            <button class="icon-btn" type="submit" title="Remove tag" aria-label="Remove tag">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" />
+              </svg>
+            </button>
+          </form>
+        {% endfor %}
+      </div>
+    {% endif %}
     <div style="display:flex; gap:16px; align-items: center; flex-wrap: wrap;">
       <div><span class="muted">Last price</span><div style="font-size:26px;">{% if product.last_price %}{{ '%.2f' % product.last_price }} {{ product.currency }}{% else %}n/a{% endif %}</div></div>
       <div>
@@ -29,11 +43,30 @@
       <canvas id="chart" height="140"></canvas>
     </div>
   </div>
-  <div class="card">
-    <h3 style="margin-top:0;">Actions</h3>
-    <form method="post" action="/delete/{{ product.id }}" onsubmit="return confirm('Delete this product and history?');">
-      <button class="btn danger" type="submit">Delete</button>
-    </form>
+  <div class="card" style="display:grid; gap:12px;">
+    <div>
+      <h3 style="margin:0 0 8px 0;">Tags</h3>
+      <form method="post" action="/product/{{ product.id }}/tag" style="display:grid; gap:8px;">
+        <div>
+          <label for="tag-select">Attach existing tag</label>
+          <select id="tag-select" name="tag_id">
+            {% for t in all_tags %}
+              <option value="{{ t.id }}">{{ t.name }} ({{ t.color }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="muted" style="font-size:12px;">Create new tags on the Tags page.</div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn" type="submit">Attach tag</button>
+        </div>
+      </form>
+    </div>
+    <div>
+      <h3 style="margin:8px 0;">Actions</h3>
+      <form method="post" action="/delete/{{ product.id }}" onsubmit="return confirm('Delete this product and history?');">
+        <button class="btn danger" type="submit">Delete</button>
+      </form>
+    </div>
   </div>
 </div>
 {% endblock %}

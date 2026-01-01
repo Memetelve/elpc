@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,13 @@ class Observation:
     error: str | None
 
 
+@dataclass(frozen=True)
+class Tag:
+    id: int
+    name: str
+    color: str
+
+
 class Database:
     def __init__(self, path: Path):
         self.path = path
@@ -48,6 +55,20 @@ class Database:
             return float(vals[mid])
         return (vals[mid - 1] + vals[mid]) / 2.0
 
+    @staticmethod
+    def _normalize_color(color: str) -> str:
+        raw = color.strip()
+        if not raw:
+            return "#666666"
+        c = raw.upper()
+        if not c.startswith("#"):
+            c = "#" + c
+        if len(c) == 4:  # #RGB -> #RRGGBB
+            c = "#" + "".join([ch * 2 for ch in c[1:]])
+        if len(c) != 7 or any(ch not in "#0123456789ABCDEF" for ch in c):
+            return "#666666"
+        return c
+
     def connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
@@ -60,10 +81,14 @@ class Database:
             # Run migrations if needed; always proceed to cleaning.
             current = conn.execute("PRAGMA user_version").fetchone()[0]
             if current == 0:
-                self._create_v2(conn)
+                self._create_v3(conn)
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif current == 1:
                 self._migrate_1_to_2(conn)
+                self._migrate_2_to_3(conn)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            elif current == 2:
+                self._migrate_2_to_3(conn)
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             elif current != SCHEMA_VERSION:
                 raise RuntimeError(f"Unsupported schema version: {current}")
@@ -130,12 +155,58 @@ class Database:
             """
         )
 
+    def _create_v3(self, conn: sqlite3.Connection) -> None:
+        self._create_v2(conn)
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS tags (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL UNIQUE,
+              color TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS product_tags (
+              product_id INTEGER NOT NULL,
+              tag_id INTEGER NOT NULL,
+              PRIMARY KEY(product_id, tag_id),
+              FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
+              FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+            """
+        )
+
     def _migrate_1_to_2(self, conn: sqlite3.Connection) -> None:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(products)").fetchall()}
         if "display_order" not in cols:
             conn.execute("ALTER TABLE products ADD COLUMN display_order INTEGER")
         conn.execute(
             "UPDATE products SET display_order = id WHERE display_order IS NULL"
+        )
+        conn.commit()
+
+    def _migrate_2_to_3(self, conn: sqlite3.Connection) -> None:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(tags)").fetchall()}
+        if not cols:
+            self._create_v3(conn)
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            return
+
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS tags (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL UNIQUE,
+              color TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS product_tags (
+              product_id INTEGER NOT NULL,
+              tag_id INTEGER NOT NULL,
+              PRIMARY KEY(product_id, tag_id),
+              FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE,
+              FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+            """
         )
         conn.commit()
 
@@ -167,6 +238,105 @@ class Database:
                 (product_id,),
             ).fetchone()
         return Product(**dict(row)) if row else None
+
+    def get_all_tags(self) -> list[Tag]:
+        with self.connect() as conn:
+            rows = conn.execute("SELECT id, name, color FROM tags ORDER BY name").fetchall()
+        return [Tag(id=int(r[0]), name=r[1], color=r[2]) for r in rows]
+
+    def upsert_tag(self, name: str, color: str) -> int:
+        tag_name = name.strip()
+        if not tag_name:
+            raise ValueError("Tag name cannot be empty")
+        color_norm = self._normalize_color(color)
+
+        with self.connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO tags(name, color)
+                VALUES (?, ?)
+                ON CONFLICT(name) DO UPDATE SET color=excluded.color
+                """,
+                (tag_name, color_norm),
+            )
+            tag_id = cur.lastrowid
+            # If update, lastrowid may be 0; fetch id.
+            if not tag_id:
+                tag_id = conn.execute(
+                    "SELECT id FROM tags WHERE name = ?", (tag_name,)
+                ).fetchone()[0]
+            conn.commit()
+            return int(tag_id)
+
+    def tag_product(self, product_id: int, name: str, color: str) -> int:
+        if not self.get_product(product_id):
+            raise ValueError("Product not found")
+        tag_id = self.upsert_tag(name, color)
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO product_tags(product_id, tag_id) VALUES (?, ?)",
+                (product_id, tag_id),
+            )
+            conn.commit()
+        return tag_id
+
+    def attach_tag(self, product_id: int, tag_id: int) -> None:
+        if not self.get_product(product_id):
+            raise ValueError("Product not found")
+        with self.connect() as conn:
+            row = conn.execute("SELECT id FROM tags WHERE id = ?", (tag_id,)).fetchone()
+            if not row:
+                raise ValueError("Tag not found")
+            conn.execute(
+                "INSERT OR IGNORE INTO product_tags(product_id, tag_id) VALUES (?, ?)",
+                (product_id, tag_id),
+            )
+            conn.commit()
+
+    def remove_tag_from_product(self, product_id: int, tag_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "DELETE FROM product_tags WHERE product_id = ? AND tag_id = ?",
+                (product_id, tag_id),
+            )
+            conn.commit()
+
+    def get_tags_for_product(self, product_id: int) -> list[Tag]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT t.id, t.name, t.color
+                FROM product_tags pt
+                JOIN tags t ON t.id = pt.tag_id
+                WHERE pt.product_id = ?
+                ORDER BY t.name
+                """,
+                (product_id,),
+            ).fetchall()
+        return [Tag(id=int(r[0]), name=r[1], color=r[2]) for r in rows]
+
+    def get_tags_for_products(self, product_ids: list[int]) -> dict[int, list[Tag]]:
+        if not product_ids:
+            return {}
+        placeholders = ",".join(["?"] * len(product_ids))
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT pt.product_id, t.id, t.name, t.color
+                FROM product_tags pt
+                JOIN tags t ON t.id = pt.tag_id
+                WHERE pt.product_id IN ({placeholders})
+                ORDER BY t.name
+                """,
+                tuple(product_ids),
+            ).fetchall()
+        out: dict[int, list[Tag]] = {pid: [] for pid in product_ids}
+        for r in rows:
+            pid = int(r[0])
+            out.setdefault(pid, []).append(
+                Tag(id=int(r[1]), name=r[2], color=r[3])
+            )
+        return out
 
     def upsert_product_name(self, product_id: int, name: str) -> None:
         with self.connect() as conn:

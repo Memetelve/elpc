@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid" style="grid-template-columns: 2fr 1fr; align-items: start;">
+  <div class="card">
+    <h2 style="margin-top:0;">Tags</h2>
+    {% if tags %}
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Color</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tags %}
+        <tr>
+          <td>{{ t.name }}</td>
+          <td>
+            <span class="tag pill tag-swatch" style="--tag-color: {{ t.color }};">{{ t.color }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No tags yet.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0;">Create / update tag</h3>
+    <form method="post" action="/tags" style="display:grid; gap:10px;">
+      <div>
+        <label for="tag-name">Name</label>
+        <input id="tag-name" name="name" type="text" placeholder="e.g. GPU" required />
+      </div>
+      <div>
+        <label for="tag-color">Color</label>
+        <input id="tag-color" name="color" type="color" value="#666666" />
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn primary" type="submit">Save tag</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

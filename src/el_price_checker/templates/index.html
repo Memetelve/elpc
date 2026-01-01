@@ -46,6 +46,13 @@
               </div>
             </div>
             <div class="muted">{{ p.source }} &middot; <a href="{{ p.url }}" target="_blank">link</a></div>
+            {% if p.tags %}
+              <div class="tags-row">
+                {% for t in p.tags %}
+                  <span class="tag pill tag-swatch" style="--tag-color: {{ t.color }};">{{ t.name }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
 
             <div class="rename-box" hidden>
               <form method="post" action="/rename/{{ p.id }}" style="margin-top:10px; display:flex; gap:10px; align-items:center;">

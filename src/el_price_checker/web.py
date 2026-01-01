@@ -41,6 +41,7 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     def _product_views() -> list[dict[str, Any]]:
         products = database.get_products()
         latest = database.get_latest_observations()
+        tags_map = database.get_tags_for_products([p.id for p in products])
         now_ts = int(datetime.datetime.now().timestamp())
         cutoff_24h = now_ts - 24 * 60 * 60
         out: list[dict[str, Any]] = []
@@ -63,6 +64,10 @@ def create_app(db_path: Path | None = None) -> FastAPI:
                     "name": p.name,
                     "source": p.source,
                     "url": p.url,
+                    "tags": [
+                        {"id": t.id, "name": t.name, "color": t.color}
+                        for t in tags_map.get(p.id, [])
+                    ],
                     "last_price": None
                     if not o or o.price_cents is None
                     else o.price_cents / 100.0,
@@ -89,6 +94,26 @@ def create_app(db_path: Path | None = None) -> FastAPI:
                 "search_results": None,
             },
         )
+
+    @app.get("/tags", response_class=HTMLResponse)
+    def tags_page(request: Request, msg: str | None = None, err: str | None = None):
+        return templates.TemplateResponse(
+            "tags.html",
+            {
+                "request": request,
+                "tags": database.get_all_tags(),
+                "msg": msg,
+                "err": err,
+            },
+        )
+
+    @app.post("/tags")
+    def create_tag(name: str = Form(...), color: str = Form("#666666")):
+        try:
+            database.upsert_tag(name, color)
+        except ValueError as e:
+            return RedirectResponse(url=f"/tags?err={str(e)}", status_code=303)
+        return RedirectResponse(url="/tags?msg=Saved", status_code=303)
 
     @app.post("/search", response_class=HTMLResponse)
     async def search(request: Request, store: str = Form(...), query: str = Form(...)):
@@ -261,7 +286,13 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             "change_24h": change_24h,
         }
         return templates.TemplateResponse(
-            "product.html", {"request": request, "product": view}
+            "product.html",
+            {
+                "request": request,
+                "product": view,
+                "tags": database.get_tags_for_product(product_id),
+                "all_tags": database.get_all_tags(),
+            },
         )
 
     @app.get("/api/products")
@@ -317,6 +348,25 @@ def create_app(db_path: Path | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="Product not found")
             conn.commit()
         return RedirectResponse(url="/?msg=Deleted", status_code=303)
+
+    @app.post("/product/{product_id}/tag")
+    def add_tag(product_id: int, tag_id: int = Form(...)):
+        try:
+            database.attach_tag(product_id, tag_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        return RedirectResponse(
+            url=f"/product/{product_id}?msg=Tag%20added", status_code=303
+        )
+
+    @app.post("/product/{product_id}/remove-tag/{tag_id}")
+    def remove_tag(product_id: int, tag_id: int):
+        if not database.get_product(product_id):
+            raise HTTPException(status_code=404, detail="Product not found")
+        database.remove_tag_from_product(product_id, tag_id)
+        return RedirectResponse(
+            url=f"/product/{product_id}?msg=Tag%20removed", status_code=303
+        )
 
     @app.post("/rename/{product_id}")
     def rename_product(product_id: int, name: str = Form(...)):
